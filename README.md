@@ -1,19 +1,14 @@
 # 入群极验验证后端服务 (group-verify-service)
-## 原作：[yjwmidc/group-verify-service](https://github.com/yjwmidc/group-verify-service/)
-## 友链：[Neko云](https://music.cnmsb.xin/)
 
 <div align="center">
 
-![UGC Avatar](https://socialify.git.ci/VanillaNahida/group-verify-service/image?description=1&font=KoHo&forks=1&issues=1&language=1&name=1&owner=1&pattern=Circuit%20Board&pulls=1&stargazers=1&theme=Auto)
+![UGC Avatar](https://socialify.git.ci/wyf9/group-verify-service/image?description=1&font=KoHo&forks=1&issues=1&language=1&name=1&owner=1&pattern=Circuit%20Board&pulls=1&stargazers=1&theme=Auto)
 
-[![GitHub license](https://img.shields.io/github/license/VanillaNahida/group-verify-service?style=flat-square)](https://github.com/VanillaNahida/group-verify-service/blob/main/LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/VanillaNahida/group-verify-service?style=flat-square)](https://github.com/VanillaNahida/group-verify-service/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/VanillaNahida/group-verify-service?style=flat-square)](https://github.com/VanillaNahida/group-verify-service/network)
-[![GitHub issues](https://img.shields.io/github/issues/VanillaNahida/group-verify-service?style=flat-square)](https://github.com/VanillaNahida/group-verify-service/issues)
+[![GitHub license](https://img.shields.io/github/license/wyf9/group-verify-service?style=flat-square)](https://github.com/wyf9/group-verify-service/blob/main/LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/wyf9/group-verify-service?style=flat-square)](https://github.com/wyf9/group-verify-service/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/wyf9/group-verify-service?style=flat-square)](https://github.com/wyf9/group-verify-service/network)
+[![GitHub issues](https://img.shields.io/github/issues/wyf9/group-verify-service?style=flat-square)](https://github.com/wyf9/group-verify-service/issues)
 [![python](https://img.shields.io/badge/Python-3.13+-3776AB.svg?style=flat-square)](https://www.python.org/)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-brightgreen.svg?style=flat-square)]()
-
-[📦 下载使用](#-安装步骤) | [📖 API文档](#-api-文档) | [💬 问题反馈](https://github.com/VanillaNahida/group-verify-service/issues)
 
 </div>
 
@@ -21,14 +16,46 @@
 
 为项目 [astrbot_plugin_group_geetest_verify](https://github.com/VanillaNahida/astrbot_plugin_group_geetest_verify) 群聊入群验证插件开发的后端，使用极验 Geetest V4 实现入群人机验证处理。当前推荐使用 `backend-py/` FastAPI 后端，兼容原有 API，并提供验证页、管理后台、API Key、数据库持久化与调用日志等能力。
 
+由 VanillaNahida 的项目修改而来，增加了 Python 后端，更易于部署；并进行了多项~~用处不大~~的优化（如：
+
+- 增加 AGENTS.md
+- prek pre-commit hook
+- GitHub Actions 自动构建代替将构建产物直接提交到仓库
+
+），~~至少更优雅了~~
+
+原作:
+- [VanillaNahida/group-verify-service](https://github.com/VanillaNahida/group-verify-service)
+- [yjwmidc/group-verify-service](https://github.com/yjwmidc/group-verify-service/)
+
+友链 (原项目): [Neko云](https://music.cnmsb.xin/)
+
 ## 效果展示
 
 <div align="center">
-<img src="img/4.png" alt="效果图1" width="400" />
+
+<details>
+<summary>点击展开</summary>
+
+<img src="img/4.png" alt="效果图4" width="400" />
 <br />
-<img src="img/5.png" alt="效果图2" width="400" />
+<img src="img/5.png" alt="效果图5" width="400" />
 <br />
-<img src="img/6.png" alt="效果图3" width="400" />
+<img src="img/6.png" alt="效果图6" width="400" />
+
+<details>
+<summary>展开更多 (图片文件较大，注意流量)</summary>
+
+<img src="img/1.png" alt="效果图1" width="400" />
+<br />
+<img src="img/2.png" alt="效果图2" width="400" />
+<br />
+<img src="img/3.png" alt="效果图3" width="400" />
+
+</details>
+
+</details>
+
 </div>
 
 ## 主要功能
@@ -47,14 +74,25 @@
 
 推荐优先部署 Python 后端：用 `uv` 安装依赖并运行 FastAPI。正式发布时也会提供可直接下载的 Release zip，其中已包含前端构建产物。
 
-### Python 后端（uv-first）
+### Python 后端
 
 1. 环境要求
 
 - Python 3.13+
 - [uv](https://docs.astral.sh/uv/)
 
-2. 安装依赖并配置
+如没有 uv 或较高版本的 Python，安装它：
+
+```bash
+# 其实和官方的一样，只是多了提前安装 Python 这一步 (以及替换为用加速源下载)；如果已经有了可以删去 `-s -- 3.13`
+curl -fsSL sh.wss.moe/uv | bash -s -- 3.13
+```
+
+2. 下载 Release zip (`group-verify-service-python-v*.zip`) 并解压
+
+> 也可以 Clone repo，但须自行构建前端为静态产物
+
+3. 安装依赖并配置
 
 ```bash
 cd backend-py
@@ -65,17 +103,17 @@ cp config.example.yaml config.yaml  # 如尚未创建
 编辑 `config.yaml` 或 `.env`，至少配置：
 
 - `api_key` / `API_KEY`
-- `salt` / `SALT`（建议至少 32 位）
+- `salt` / `SALT`（建议至少 32 位，可用 `openssl rand -hex 32` 生成）
 - `geetest.captcha_id` / `GEETEST_CAPTCHA_ID`
 - `geetest.captcha_key` / `GEETEST_CAPTCHA_KEY`
 
-3. 启动服务
+4. 启动服务
 
 ```bash
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-4. 反向代理（Nginx 示例）
+5. 反向代理（Nginx 示例）
 
 ```nginx
 location / {
@@ -109,7 +147,7 @@ PHP 后端已移动到 `backend-php/`，仅作为兼容保留。
 
 2. 上传并设置站点目录
 
-- 上传 Release 包内 `backend-php/` 目录全部内容
+- 上传 Release `group-verify-service-php-*.zip` 包内 `backend-php/` 目录全部内容
 - 站点运行目录指向：`backend-php/public/`
 - 确保目录可写：`backend-php/runtime/`、`backend-php/database/`
 
