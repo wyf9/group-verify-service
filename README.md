@@ -10,7 +10,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/VanillaNahida/group-verify-service?style=flat-square)](https://github.com/VanillaNahida/group-verify-service/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/VanillaNahida/group-verify-service?style=flat-square)](https://github.com/VanillaNahida/group-verify-service/network)
 [![GitHub issues](https://img.shields.io/github/issues/VanillaNahida/group-verify-service?style=flat-square)](https://github.com/VanillaNahida/group-verify-service/issues)
-[![php8](https://img.shields.io/badge/PHP-8.0+-blue.svg?style=flat-square)](https://www.php.net/)
+[![python](https://img.shields.io/badge/Python-3.13+-3776AB.svg?style=flat-square)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-brightgreen.svg?style=flat-square)]()
 
 [📦 下载使用](#-安装步骤) | [📖 API文档](#-api-文档) | [💬 问题反馈](https://github.com/VanillaNahida/group-verify-service/issues)
@@ -19,7 +19,7 @@
 
 ## 项目简介
 
-为项目 [astrbot_plugin_group_geetest_verify](https://github.com/VanillaNahida/astrbot_plugin_group_geetest_verify) 群聊入群验证插件开发的后端，使用极验Geetest V4实现入群人机验证处理，基于 ThinkPHP 8 框架开发的极验验证码服务，提供完整的人机验证解决方案，通过生成验证链接、受试者访问链接验证获取验证码，再把验证码发到群聊，机器人收到验证码后，调用后端接口验证验证码是否正确，若正确则允许入群，否则拒绝入群。
+为项目 [astrbot_plugin_group_geetest_verify](https://github.com/VanillaNahida/astrbot_plugin_group_geetest_verify) 群聊入群验证插件开发的后端，使用极验 Geetest V4 实现入群人机验证处理。当前推荐使用 `backend-py/` FastAPI 后端，兼容原有 API，并提供验证页、管理后台、API Key、数据库持久化与调用日志等能力。
 
 ## 效果展示
 
@@ -43,19 +43,62 @@
 
 - API 文档：见 [API.md](API.md)
 
-## 快速部署（推荐：上传即用）
+## 快速部署（推荐：Python）
+
+1. 环境要求
+
+- Python 3.13+
+- [uv](https://docs.astral.sh/uv/)
+
+2. 安装依赖并配置
+
+```bash
+cd backend-py
+uv sync
+cp config.example.yaml config.yaml
+```
+
+编辑 `config.yaml` 或 `.env`，至少配置：
+
+- `api_key` / `API_KEY`
+- `salt` / `SALT`（建议至少 32 位）
+- `geetest.captcha_id` / `GEETEST_CAPTCHA_ID`
+- `geetest.captcha_key` / `GEETEST_CAPTCHA_KEY`
+
+3. 启动服务
+
+```bash
+uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+4. 反向代理（Nginx 示例）
+
+```nginx
+location / {
+  proxy_pass http://127.0.0.1:8000;
+  proxy_set_header Host $host;
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+<details>
+<summary>旧版 PHP 后端部署</summary>
+
+PHP 后端已移动到 `backend-php/`，仅作为兼容保留。
 
 1. 环境要求
 
 - PHP 8.0+
-- PHP 扩展：fileinfo、sqlite3、pdo_sqlite,mbstring
-- 执行composer install命令
+- PHP 扩展：fileinfo、sqlite3、pdo_sqlite、mbstring
+- 执行 `composer install`
 
 2. 上传并设置站点目录
 
-- 上传 `backend/` 目录全部内容
-- 站点运行目录指向：`backend/public/`
-- 确保目录可写：`backend/runtime/`、`backend/database/`
+- 上传 `backend-php/` 目录全部内容
+- 站点运行目录指向：`backend-php/public/`
+- 确保目录可写：`backend-php/runtime/`、`backend-php/database/`
 
 3. 配置伪静态（Nginx 示例）
 
@@ -74,6 +117,8 @@ location / {
 - 初始化成功后会生成 `.env` 并初始化 SQLite
 - 仅首次可用：当 `.env` 已存在时，`/setup` 返回 `404`
 
+</details>
+
 ## 管理后台
 
 - 页面入口：`/admin`、`/admin/login`
@@ -84,14 +129,22 @@ location / {
 ### 后端
 
 ```bash
-cd backend
-composer install
-php think run
+cd backend-py
+uv sync
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+代码质量工具：
+
+```bash
+uv run ruff format .
+uv run ruff check .
+uv run ty check .
 ```
 
 ### 前端
 
-前端源码在 `frontend/`，构建产物输出到 `backend/public/static/verify/`。
+前端源码在 `frontend/`，构建产物输出到 `backend-py/public/static/verify/`。
 
 ```bash
 cd frontend
@@ -116,25 +169,26 @@ npm run build
 
 ## 配置说明
 
-推荐通过 `/setup` 或管理后台配置；也可手动创建 `backend/.env`（模板见 `backend/.example.env`）。
+Python 后端支持 `backend-py/config.yaml`、`backend-py/.env` 与系统环境变量，优先级为：环境变量 > `.env` > `config.yaml`。管理后台写入的运行配置会保存在数据库中。
 
 常用配置项：
 
-| 变量名 | 说明 |
+| 配置项 / 环境变量 | 说明 |
 |---|---|
-| GEETEST_CAPTCHA_ID | 极验验证码 ID |
-| GEETEST_CAPTCHA_KEY | 极验验证码 Key |
-| GEETEST_API_SERVER | 极验 API Server（默认 `https://gcaptcha4.geetest.com`） |
-| GEETEST_CODE_EXPIRE | 验证码有效期（秒，默认 300） |
-| API_KEY | 机器人接口访问密钥（支持多个） |
-| SALT | ticket 生成盐值（建议至少 32 位） |
-| DB_DRIVER | 数据库驱动（默认 sqlite） |
-| DB_SQLITE_PATH | SQLite 路径（默认 `./database/geetest.db`） |
+| `geetest.captcha_id` / `GEETEST_CAPTCHA_ID` | 极验验证码 ID |
+| `geetest.captcha_key` / `GEETEST_CAPTCHA_KEY` | 极验验证码 Key |
+| `geetest.api_server` / `GEETEST_API_SERVER` | 极验 API Server（默认 `https://gcaptcha4.geetest.com`） |
+| `geetest.code_expire` / `GEETEST_CODE_EXPIRE` | 验证码有效期（秒，默认 300） |
+| `api_key` / `API_KEY` | 首次启动写入数据库的机器人接口访问密钥（支持多个） |
+| `salt` / `SALT` | ticket 生成盐值（建议至少 32 位） |
+| `database` / `DATABASE` | SQLAlchemy 数据库 URL，默认 `sqlite:///./data.db` |
+| `log_level` / `LOG_LEVEL` | 日志级别，默认 `INFO` |
+| `enable_doc` / `ENABLE_DOC` | 是否启用 `/docs`、`/redoc`、`/openapi.json` |
 
 ## 安全建议
 
 - 妥善保管 `GEETEST_CAPTCHA_KEY`、`API_KEY`、`SALT`，避免泄露
-- 生产环境建议关闭调试：`APP_DEBUG=false`、`SHOW_ERROR_MSG=false`
+- 生产环境建议设置 `ENABLE_DOC=false` 关闭内置文档入口
 - 建议使用 HTTPS 部署
 
 ## 许可证

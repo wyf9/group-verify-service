@@ -8,7 +8,7 @@ fi
 need_build=0
 for f in $(git diff --cached --name-only --diff-filter=ACMR); do
   case "$f" in
-    frontend/*|backend/public/static/verify/*)
+    frontend/*|backend-py/public/static/verify/*)
       need_build=1
       break
       ;;
@@ -24,7 +24,7 @@ if command -v npm >/dev/null 2>&1; then
     echo "pre-commit: 前端构建失败，请确保前端可以正常构建" >&2
     exit 1
   fi
-  git add backend/public/static/verify >/dev/null 2>&1 || true
+  git add backend-py/public/static/verify >/dev/null 2>&1 || true
   exit 0
 fi
 

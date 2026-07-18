@@ -1,0 +1,10 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+data.db
+database/*.db
+runtime/*
+!runtime/.gitkeep
+public/static/verify/*
+!public/static/verify/.gitkeep

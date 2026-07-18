@@ -1,0 +1,10 @@
+api_key: "change-me-to-a-random-secret"
+salt: "change-me-to-at-least-32-random-characters"
+geetest:
+  captcha_id: ""
+  captcha_key: ""
+  api_server: "https://gcaptcha4.geetest.com"
+  code_expire: 300
+database: "sqlite:///./data.db"
+log_level: "INFO"
+enable_doc: true

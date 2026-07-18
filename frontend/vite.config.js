@@ -11,7 +11,7 @@ export default defineConfig({
   },
   base: '/static/verify/',
   build: {
-    outDir: '../backend/public/static/verify',
+    outDir: '../backend-py/public/static/verify',
     emptyOutDir: true,
     rollupOptions: {
       output: {
@@ -26,4 +26,3 @@ export default defineConfig({
     }
   }
 });
-
