@@ -1,8 +1,0 @@
-#!/bin/sh
-set -e
-
-if git diff --cached --name-only --diff-filter=ACMR | grep -q '^frontend/'; then
-  echo "pre-commit: frontend changed. Release zips build static assets in GitHub Actions." >&2
-fi
-
-exit 0

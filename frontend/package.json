@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host",
     "build": "vite-ssg build",
+    "lint": "bunx --bun vite build --mode development --outDir /tmp/group-verify-frontend-lint --emptyOutDir",
     "preview": "vite preview --host"
   },
   "dependencies": {
@@ -19,4 +20,3 @@
     "vite-ssg": "^28.2.2"
   }
 }
-

@@ -4,7 +4,7 @@
 
 - `backend-py/` is the recommended backend. It is a Python 3.13+ FastAPI service that serves both API routes and the built frontend static files.
 - `backend-php/` is the legacy ThinkPHP backend kept for compatibility/reference.
-- `frontend/` is the Vue/Vite frontend. Its production build output is `backend-py/public/static/verify/`.
+- `frontend/` is the Vue/Vite frontend. Use Bun for package management. Its production build output is `backend-py/public/static/verify/`.
 - `API.md` is the compatibility contract. Backend API behavior should remain compatible with it unless the API document is intentionally updated.
 
 ## Backend Python Tooling
@@ -24,6 +24,17 @@ uv run ruff format .
 uv run ruff check .
 uv run ty check .
 ```
+
+## Frontend Tooling
+
+- Package manager/runtime: `bun`.
+- Common commands from `frontend/`: `bun install`, `bun run dev`, `bun run build`, `bun run lint`.
+
+## Git Hooks
+
+- Hook manager: `prek` using the native `prek.toml` format.
+- Run all configured hooks with `prek run --all-files`.
+- Install hooks with `prek install`.
 
 ## Configuration
 

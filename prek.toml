@@ -1,0 +1,36 @@
+minimum_prek_version = "0.4.0"
+
+[[repos]]
+repo = "https://github.com/astral-sh/ruff-pre-commit"
+rev = "v0.15.22"
+
+[[repos.hooks]]
+id = "ruff-format"
+name = "ruff format"
+files = "^backend-py/.*\\.py$"
+args = ["--config", "backend-py/pyproject.toml", "--check"]
+
+[[repos.hooks]]
+id = "ruff"
+name = "ruff check"
+files = "^backend-py/.*\\.py$"
+args = ["--config", "backend-py/pyproject.toml"]
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "ty"
+name = "ty check"
+language = "system"
+entry = "bash -c 'cd backend-py && uv run ty check .'"
+files = "^backend-py/.*\\.py$"
+pass_filenames = false
+
+[[repos.hooks]]
+id = "frontend-lint"
+name = "frontend lint"
+language = "system"
+entry = "bash -c 'cd frontend && bun install --frozen-lockfile && bun run lint'"
+files = "^frontend/"
+pass_filenames = false

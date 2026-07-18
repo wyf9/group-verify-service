@@ -43,23 +43,18 @@
 
 - API 文档：见 [API.md](API.md)
 
-## 快速部署（推荐：Release 包）
+## 快速部署（推荐：Python + uv）
 
-Release 会提供两个 zip 包：
+推荐优先部署 Python 后端：用 `uv` 安装依赖并运行 FastAPI。正式发布时也会提供可直接下载的 Release zip，其中已包含前端构建产物。
 
-- `group-verify-service-python-*.zip`：推荐使用，内含 `backend-py/` 和已构建的前端静态文件
-- `group-verify-service-php-*.zip`：旧版兼容包，内含 `backend-php/`、Composer 生产依赖和已构建的前端静态文件
-
-源码仓库不再提交前端构建产物；发布包由 GitHub Actions 构建生成。打 tag（如 `v1.0.0`）会自动发布 Release，也可在 Actions 里手动运行 `Build release packages` 下载构建产物。
-
-### Python 后端（推荐）
+### Python 后端（uv-first）
 
 1. 环境要求
 
 - Python 3.13+
 - [uv](https://docs.astral.sh/uv/)
 
-2. 解压并安装依赖
+2. 安装依赖并配置
 
 ```bash
 cd backend-py
@@ -91,6 +86,15 @@ location / {
   proxy_set_header X-Forwarded-Proto $scheme;
 }
 ```
+
+### Release 包
+
+Release 会提供两个 zip 包：
+
+- `group-verify-service-python-*.zip`：推荐使用，内含 `backend-py/` 和已构建的前端静态文件
+- `group-verify-service-php-*.zip`：旧版兼容包，内含 `backend-php/`、Composer 生产依赖和已构建的前端静态文件
+
+源码仓库不再提交前端构建产物；发布包由 GitHub Actions 构建生成。打 tag（如 `v1.0.0`）会自动发布 Release，也可在 Actions 里手动运行 `Build release packages` 下载构建产物。
 
 <details>
 <summary>旧版 PHP 后端部署</summary>
@@ -157,22 +161,22 @@ uv run ty check .
 
 ```bash
 cd frontend
-npm install
-npm run dev
+bun install
+bun run dev
 ```
 
 构建产物（用于部署）：
 
 ```bash
 cd frontend
-npm run build
+bun run build
 ```
 
 ## Release 构建
 
 GitHub Actions 工作流位于 `.github/workflows/release.yml`，会执行：
 
-1. 安装 Node.js 依赖并构建前端
+1. 使用 Bun 安装前端依赖并构建前端
 2. 将前端构建产物放入 `backend-py/public/static/verify/` 并复制到 `backend-php/public/static/verify/`
 3. 校验 Python 后端：`uv sync --frozen`、`ruff format --check`、`ruff check`、`ty check`
 4. 为 PHP 后端执行 `composer install --no-dev --optimize-autoloader`
