@@ -43,19 +43,28 @@
 
 - API 文档：见 [API.md](API.md)
 
-## 快速部署（推荐：Python）
+## 快速部署（推荐：Release 包）
+
+Release 会提供两个 zip 包：
+
+- `group-verify-service-python-*.zip`：推荐使用，内含 `backend-py/` 和已构建的前端静态文件
+- `group-verify-service-php-*.zip`：旧版兼容包，内含 `backend-php/`、Composer 生产依赖和已构建的前端静态文件
+
+源码仓库不再提交前端构建产物；发布包由 GitHub Actions 构建生成。打 tag（如 `v1.0.0`）会自动发布 Release，也可在 Actions 里手动运行 `Build release packages` 下载构建产物。
+
+### Python 后端（推荐）
 
 1. 环境要求
 
 - Python 3.13+
 - [uv](https://docs.astral.sh/uv/)
 
-2. 安装依赖并配置
+2. 解压并安装依赖
 
 ```bash
 cd backend-py
 uv sync
-cp config.example.yaml config.yaml
+cp config.example.yaml config.yaml  # 如尚未创建
 ```
 
 编辑 `config.yaml` 或 `.env`，至少配置：
@@ -92,11 +101,11 @@ PHP 后端已移动到 `backend-php/`，仅作为兼容保留。
 
 - PHP 8.0+
 - PHP 扩展：fileinfo、sqlite3、pdo_sqlite、mbstring
-- 执行 `composer install`
+- Release 包已包含 Composer 生产依赖；从源码部署时才需要执行 `composer install --no-dev -o`
 
 2. 上传并设置站点目录
 
-- 上传 `backend-php/` 目录全部内容
+- 上传 Release 包内 `backend-php/` 目录全部内容
 - 站点运行目录指向：`backend-php/public/`
 - 确保目录可写：`backend-php/runtime/`、`backend-php/database/`
 
@@ -144,7 +153,7 @@ uv run ty check .
 
 ### 前端
 
-前端源码在 `frontend/`，构建产物输出到 `backend-py/public/static/verify/`。
+前端源码在 `frontend/`，本地构建产物输出到 `backend-py/public/static/verify/`，该目录内容不提交到 git。Release 工作流会先构建到 Python 后端，再复制同一份静态文件到 PHP 后端包。
 
 ```bash
 cd frontend
@@ -158,6 +167,16 @@ npm run dev
 cd frontend
 npm run build
 ```
+
+## Release 构建
+
+GitHub Actions 工作流位于 `.github/workflows/release.yml`，会执行：
+
+1. 安装 Node.js 依赖并构建前端
+2. 将前端构建产物放入 `backend-py/public/static/verify/` 并复制到 `backend-php/public/static/verify/`
+3. 校验 Python 后端：`uv sync --frozen`、`ruff format --check`、`ruff check`、`ty check`
+4. 为 PHP 后端执行 `composer install --no-dev --optimize-autoloader`
+5. 生成 Python / PHP 两个可部署 zip；tag 触发时自动上传到 GitHub Release
 
 ## 使用流程（机器人视角）
 

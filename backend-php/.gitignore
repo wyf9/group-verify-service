@@ -8,3 +8,5 @@ geetest.db
 /.buildpath
 /.project
 /database/*.db
+/public/static/verify/*
+!/public/static/verify/.gitkeep

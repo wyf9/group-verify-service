@@ -1,0 +1,94 @@
+name: Build release packages
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend-py/uv.lock
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Copy frontend to PHP backend
+        run: |
+          rm -rf backend-php/public/static/verify
+          mkdir -p backend-php/public/static/verify
+          cp -a backend-py/public/static/verify/. backend-php/public/static/verify/
+
+      - name: Verify Python backend
+        working-directory: backend-py
+        run: |
+          uv sync --frozen
+          uv run ruff format . --check
+          uv run ruff check .
+          uv run ty check .
+
+      - name: Install PHP dependencies
+        working-directory: backend-php
+        run: |
+          composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+
+      - name: Assemble release directories
+        run: |
+          rm -rf dist release-py release-php
+          mkdir -p dist release-py release-php
+
+          rsync -a --exclude '.venv/' --exclude '.env' --exclude 'data.db' --exclude 'database/*.db' backend-py/ release-py/backend-py/
+          cp README.md API.md LICENSE AGENTS.md release-py/
+
+          rsync -a --exclude '.env' --exclude 'runtime/*' --exclude 'database/*.db' backend-php/ release-php/backend-php/
+          mkdir -p release-php/backend-php/runtime release-php/backend-php/database
+          cp README.md API.md LICENSE release-php/
+
+      - name: Create zip packages
+        run: |
+          version="${GITHUB_REF_NAME:-manual}"
+          version="${version//\//-}"
+          py_zip="group-verify-service-python-${version}.zip"
+          php_zip="group-verify-service-php-${version}.zip"
+          (cd release-py && zip -r "../dist/${py_zip}" .)
+          (cd release-php && zip -r "../dist/${php_zip}" .)
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-packages
+          path: dist/*.zip
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.zip
