@@ -63,7 +63,15 @@ jobs:
           rm -rf dist release-py release-php
           mkdir -p dist release-py release-php
 
-          rsync -a --exclude '.venv/' --exclude '.env' --exclude 'data.db' --exclude 'database/*.db' backend-py/ release-py/backend-py/
+          rsync -a \
+            --exclude '.venv/' \
+            --exclude '.env' \
+            --exclude '.ruff_cache/' \
+            --exclude '__pycache__/' \
+            --exclude '*.py[cod]' \
+            --exclude 'data.db' \
+            --exclude 'database/*.db' \
+            backend-py/ release-py/backend-py/
           cp README.md API.md LICENSE AGENTS.md release-py/
 
           rsync -a --exclude '.env' --exclude 'runtime/*' --exclude 'database/*.db' backend-php/ release-php/backend-php/
