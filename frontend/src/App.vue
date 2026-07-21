@@ -11,11 +11,14 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
-import AdminLoginView from './view/Admin/Login/index.vue';
-import AdminView from './view/Admin/index.vue';
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
 import VerifyView from './view/Verify/index.vue';
 import { isAdminMode } from './utils/url';
+
+// 管理后台仅在访问 /admin 时才需要，异步加载以拆分成独立 chunk，
+// 避免公开的入群验证页也加载后台代码。
+const AdminLoginView = defineAsyncComponent(() => import('./view/Admin/Login/index.vue'));
+const AdminView = defineAsyncComponent(() => import('./view/Admin/index.vue'));
 import { createTranslator, getArcoLocale, getInitialLocale, setLocale } from './i18n';
 
 const locale = ref(setLocale(getInitialLocale()));
