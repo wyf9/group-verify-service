@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
-    "build": "vite-ssg build",
+    "build": "vite build",
     "lint": "bunx --bun vite build --mode development --outDir /tmp/group-verify-frontend-lint --emptyOutDir",
     "preview": "vite preview --host"
   },
@@ -14,9 +14,7 @@
     "vue": "^3.4.0"
   },
   "devDependencies": {
-    "@unhead/vue": "^2.0.0",
     "@vitejs/plugin-vue": "^5.2.0",
-    "vite": "^5.4.0",
-    "vite-ssg": "^28.2.2"
+    "vite": "^5.4.0"
   }
 }

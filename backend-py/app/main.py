@@ -754,8 +754,17 @@ async def admin_api_keys_delete(
     return {"code": 0, "msg": "success", "data": {"deleted": 1}}
 
 
-def verify_index() -> Path:
+def frontend_index() -> Path:
+    # 前端为单页应用（SPA），验证页与管理后台共用同一 index.html，
+    # 由前端根据 URL 路径切换渲染验证页或管理后台界面。
     return BASE_DIR / "public" / "static" / "verify" / "index.html"
+
+
+def spa_response() -> Response:
+    html = frontend_index()
+    if not html.exists():
+        return Response("前端页面资源缺失", status_code=500)
+    return FileResponse(html, media_type="text/html")
 
 
 @app.get(
@@ -767,10 +776,7 @@ def verify_index() -> Path:
 async def verify_page(ticket: str):
     if not ticket:
         return Response("无效的验证链接", status_code=400)
-    html = verify_index()
-    if not html.exists():
-        return Response("验证页面资源缺失", status_code=500)
-    return FileResponse(html, media_type="text/html")
+    return spa_response()
 
 
 @app.get(
@@ -786,10 +792,7 @@ async def verify_page(ticket: str):
     description="返回管理后台登录页面。",
 )
 async def admin_page():
-    html = verify_index()
-    if not html.exists():
-        return Response("验证页面资源缺失", status_code=500)
-    return FileResponse(html, media_type="text/html")
+    return spa_response()
 
 
 static_dir = BASE_DIR / "public" / "static"

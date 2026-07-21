@@ -11,7 +11,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import AdminLoginView from './view/Admin/Login/index.vue';
 import AdminView from './view/Admin/index.vue';
 import VerifyView from './view/Verify/index.vue';
@@ -54,6 +54,19 @@ function goAdminLogin() {
 function goAdminHome() {
   navigateTo('/admin');
 }
+
+watch(
+  [adminMode, adminRoute],
+  () => {
+    if (typeof document === 'undefined') return;
+    if (!adminMode.value) {
+      document.title = '入群验证';
+    } else {
+      document.title = adminRoute.value === 'login' ? '管理后台登录' : '管理后台';
+    }
+  },
+  { immediate: true }
+);
 
 onMounted(() => {
   adminMode.value = isAdminMode();
