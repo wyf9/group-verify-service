@@ -33,3 +33,12 @@ export function listApiCallLogs(token, params) {
     params: params || {}
   });
 }
+
+export function listVerifyLogs(token, params) {
+  return request({
+    url: '/admin/verify-logs',
+    method: 'get',
+    headers: { Authorization: 'Bearer ' + String(token || '') },
+    params: params || {}
+  });
+}

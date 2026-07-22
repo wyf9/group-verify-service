@@ -36,21 +36,43 @@
       row-key="id"
       size="medium"
     >
+      <template #note="{ record }">
+        <span v-if="record && record.note">{{ record.note }}</span>
+        <a-typography-text v-else type="secondary">-</a-typography-text>
+      </template>
       <template #type="{ record }">
         <span>{{ record && record.is_default ? '当前使用' : '普通' }}</span>
+      </template>
+      <template #status="{ record }">
+        <a-tag :color="record && record.enabled !== false ? 'green' : 'red'">
+          {{ record && record.enabled !== false ? '启用' : '禁用' }}
+        </a-tag>
+      </template>
+      <template #lastUsed="{ record }">
+        <span>{{ formatTime(record && record.last_used_at) }}</span>
+      </template>
+      <template #requestCount="{ record }">
+        <span>{{ Number((record && record.request_count) || 0) }}</span>
       </template>
       <template #createdAt="{ record }">
         <span>{{ formatTime(record && record.created_at) }}</span>
       </template>
-      <template #updatedAt="{ record }">
-        <span>{{ formatTime(record && record.updated_at) }}</span>
-      </template>
       <template #actions="{ record }">
-        <a-space>
+        <a-space wrap>
+          <a-button size="mini" :loading="submitting" @click="openNote(record)">备注</a-button>
+          <a-button
+            size="mini"
+            :loading="submitting"
+            :disabled="record && record.is_default"
+            @click="onToggleEnabled(record)"
+          >
+            {{ record && record.enabled !== false ? '禁用' : '启用' }}
+          </a-button>
           <a-button
             status="warning"
             size="mini"
             :loading="submitting"
+            :disabled="record && record.is_default && !allowConfigModifyRef"
             @click="onReset(record)"
           >
             重置
@@ -76,15 +98,32 @@
       @ok="onCreate"
     >
       <a-space direction="vertical" size="medium" fill>
-        <a-form v-if="createMode === 'manual'" layout="vertical">
-          <a-form-item label="密钥">
-            <a-input-password v-model="manualValue" placeholder="至少 16 位，建议随机强口令" allow-clear />
-          </a-form-item>
-        </a-form>
-        <a-typography-paragraph v-else style="margin: 0">
+        <a-typography-paragraph v-if="createMode !== 'manual'" style="margin: 0">
           将自动生成一个高强度随机密钥。
         </a-typography-paragraph>
+        <a-form layout="vertical">
+          <a-form-item v-if="createMode === 'manual'" label="密钥">
+            <a-input-password v-model="manualValue" placeholder="至少 16 位，建议随机强口令" allow-clear />
+          </a-form-item>
+          <a-form-item label="备注（可为空）">
+            <a-input v-model="createNote" placeholder="用于区分不同密钥用途，可留空" allow-clear :max-length="255" />
+          </a-form-item>
+        </a-form>
       </a-space>
+    </a-modal>
+
+    <a-modal
+      v-model:visible="noteVisible"
+      title="编辑备注"
+      :mask-closable="false"
+      :ok-loading="submitting"
+      @ok="onSaveNote"
+    >
+      <a-form layout="vertical">
+        <a-form-item label="备注（可为空）">
+          <a-input v-model="noteEditValue" placeholder="用于区分不同密钥用途，可留空" allow-clear :max-length="255" />
+        </a-form-item>
+      </a-form>
     </a-modal>
 
     <a-modal v-model:visible="createdVisible" :title="createdTitle" :mask-closable="false" :footer="false">
@@ -106,11 +145,12 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
 import { Message, Modal } from '@arco-design/web-vue';
-import { createApiKey, deleteApiKey, listApiKeys, listApiKeysById, resetApiKey } from '../../../api/adminApiKeys';
+import { createApiKey, deleteApiKey, listApiKeys, listApiKeysById, resetApiKey, updateApiKey } from '../../../api/adminApiKeys';
 
 const props = defineProps({
   token: { type: String, default: '' },
-  onUnauthorized: { type: Function, default: null }
+  onUnauthorized: { type: Function, default: null },
+  allowConfigModify: { type: Boolean, default: true }
 });
 
 const tokenRef = computed(() => String(props.token || ''));
@@ -124,6 +164,12 @@ const lastQueryId = ref(0);
 const createVisible = ref(false);
 const createMode = ref('random');
 const manualValue = ref('');
+const createNote = ref('');
+
+const noteVisible = ref(false);
+const noteEditId = ref(0);
+const noteEditValue = ref('');
+const allowConfigModifyRef = computed(() => props.allowConfigModify !== false);
 
 const createdVisible = ref(false);
 const createdValue = ref('');
@@ -137,12 +183,15 @@ const createdTip = computed(() =>
 );
 
 const columns = [
-  { title: 'ID', dataIndex: 'id', width: 90 },
+  { title: 'ID', dataIndex: 'id', width: 70 },
   { title: '密钥', width: 180, dataIndex: 'masked' },
-  { title: '类型', width: 120, slotName: 'type' },
-  { title: '创建时间', width: 180, slotName: 'createdAt' },
-  { title: '更新时间', width: 180, slotName: 'updatedAt' },
-  { title: '操作', width: 200, slotName: 'actions' }
+  { title: '备注', width: 160, slotName: 'note' },
+  { title: '类型', width: 90, slotName: 'type' },
+  { title: '状态', width: 90, slotName: 'status' },
+  { title: '最后使用', width: 170, slotName: 'lastUsed' },
+  { title: '验证请求数', width: 100, slotName: 'requestCount' },
+  { title: '创建时间', width: 170, slotName: 'createdAt' },
+  { title: '操作', width: 260, slotName: 'actions' }
 ];
 
 function formatTime(ts) {
@@ -219,6 +268,7 @@ async function onRefresh() {
 function openCreate(mode) {
   createMode.value = mode === 'manual' ? 'manual' : 'random';
   manualValue.value = '';
+  createNote.value = '';
   createVisible.value = true;
 }
 
@@ -234,7 +284,8 @@ async function onCreate() {
     }
 
     const v = createMode.value === 'manual' ? String(manualValue.value || '').trim() : undefined;
-    const { data } = await createApiKey(token, v ? v : undefined);
+    const note = String(createNote.value || '').trim();
+    const { data } = await createApiKey(token, v ? v : undefined, note ? note : undefined);
 
     if (data && data.code === 0 && data.data && data.data.value) {
       createVisible.value = false;
@@ -277,6 +328,96 @@ async function copyCreated() {
   } catch (e) {
     Message.error('复制失败，请手动复制');
   }
+}
+
+function openNote(record) {
+  const id = record && record.id ? Number(record.id) : 0;
+  if (!id) return;
+  noteEditId.value = id;
+  noteEditValue.value = String((record && record.note) || '');
+  noteVisible.value = true;
+}
+
+async function onSaveNote() {
+  const id = Number(noteEditId.value || 0);
+  if (!id) {
+    noteVisible.value = false;
+    return;
+  }
+  submitting.value = true;
+  try {
+    const token = tokenRef.value ? String(tokenRef.value) : '';
+    if (!token) {
+      if (props.onUnauthorized) props.onUnauthorized();
+      Message.error('登录已过期，请重新登录');
+      noteVisible.value = false;
+      return;
+    }
+    const { data } = await updateApiKey(token, id, { note: String(noteEditValue.value || '') });
+    if (data && data.code === 0) {
+      Message.success('已保存备注');
+      noteVisible.value = false;
+      await loadItems();
+      return;
+    }
+    if (data && data.code === 401) {
+      if (props.onUnauthorized) props.onUnauthorized();
+      Message.error('登录已过期，请重新登录');
+      noteVisible.value = false;
+      return;
+    }
+    Message.error((data && data.msg) || '保存失败');
+  } catch (e) {
+    Message.error('网络异常，请稍后重试');
+  } finally {
+    submitting.value = false;
+  }
+}
+
+function onToggleEnabled(record) {
+  const id = record && record.id ? Number(record.id) : 0;
+  if (!id) return;
+  if (record && record.is_default) {
+    Message.warning('当前使用的 API Key 不可禁用');
+    return;
+  }
+  const nextEnabled = !(record && record.enabled !== false);
+  Modal.confirm({
+    title: nextEnabled ? '确认启用' : '确认禁用',
+    content: nextEnabled
+      ? `启用后该密钥可继续使用（ID：${id}）。`
+      : `禁用后该密钥将立即无法通过鉴权（ID：${id}）。`,
+    okText: nextEnabled ? '启用' : '禁用',
+    cancelText: '取消',
+    okButtonProps: { status: nextEnabled ? 'normal' : 'danger' },
+    onOk: async () => {
+      submitting.value = true;
+      try {
+        const token = tokenRef.value ? String(tokenRef.value) : '';
+        if (!token) {
+          if (props.onUnauthorized) props.onUnauthorized();
+          Message.error('登录已过期，请重新登录');
+          return;
+        }
+        const { data } = await updateApiKey(token, id, { enabled: nextEnabled });
+        if (data && data.code === 0) {
+          Message.success(nextEnabled ? '已启用' : '已禁用');
+          await loadItems();
+          return;
+        }
+        if (data && data.code === 401) {
+          if (props.onUnauthorized) props.onUnauthorized();
+          Message.error('登录已过期，请重新登录');
+          return;
+        }
+        Message.error((data && data.msg) || '操作失败');
+      } catch (e) {
+        Message.error('网络异常，请稍后重试');
+      } finally {
+        submitting.value = false;
+      }
+    }
+  });
 }
 
 function onDelete(record) {
@@ -324,6 +465,10 @@ function onDelete(record) {
 function onReset(record) {
   const id = record && record.id ? Number(record.id) : 0;
   if (!id) return;
+  if (record && record.is_default && !allowConfigModifyRef.value) {
+    Message.warning('配置修改已被禁用，无法重置默认密钥');
+    return;
+  }
 
   Modal.confirm({
     title: '确认重置',

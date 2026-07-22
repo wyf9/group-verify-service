@@ -37,6 +37,7 @@ class AppConfig(BaseModel):
     database: str = "sqlite:///./data.db"
     log_level: str = "INFO"
     enable_doc: bool = True
+    allow_config_modify: bool = True
 
 
 def _parse_scalar(value: str) -> Any:
@@ -68,6 +69,7 @@ ENV_MAP = {
     "DB_PATH": ("database",),
     "LOG_LEVEL": ("log_level",),
     "ENABLE_DOC": ("enable_doc",),
+    "ALLOW_CONFIG_MODIFY": ("allow_config_modify",),
 }
 
 

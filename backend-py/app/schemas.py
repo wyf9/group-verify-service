@@ -73,14 +73,39 @@ class VerifyCheckResponse(ApiResponse):
 
 class ApiKeyCreateRequest(BaseModel):
     value: str | None = Field(default=None, description="自定义密钥，不传则自动生成")
+    note: str | None = Field(default=None, description="备注，可为空")
+
+
+class ApiKeyUpdateRequest(BaseModel):
+    note: str | None = Field(default=None, description="备注，可为空")
+    enabled: bool | None = Field(default=None, description="启用/禁用")
 
 
 class ApiKeyItem(BaseModel):
     id: int
     is_default: bool | None = None
     masked: str
+    note: str | None = None
+    enabled: bool | None = None
+    last_used_at: int | None = None
+    request_count: int | None = None
     created_at: int | None = None
     updated_at: int | None = None
+
+
+class VerifyLogItem(BaseModel):
+    id: int
+    created_at: int
+    api_key_id: int | None = None
+    api_key_note: str | None = None
+    api_key_masked: str | None = None
+    ticket: str | None = None
+    group_id: str | None = None
+    user_id: str | None = None
+    result: bool
+    code: str | None = None
+    ip: str | None = None
+    user_agent: str | None = None
 
 
 class SettingsUpdateRequest(BaseModel):

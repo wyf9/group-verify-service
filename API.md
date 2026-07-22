@@ -235,7 +235,10 @@ Authorization: Bearer <API_KEY>
 
 - `401`：`Unauthorized`
 - `403`：`权限不足：该接口仅允许默认 API Key 调用`
+- `403`：`配置修改已被禁用（ALLOW_CONFIG_MODIFY=false）`
 - `429`：`请求过于频繁，请稍后重试`
+
+> 说明：当 `ApiKey` 被禁用（`enabled=false`）时，任何使用该 key 的请求都会返回 `401 Unauthorized: API key disabled`。
 
 ## 管理后台接口
 
@@ -257,6 +260,7 @@ Authorization: Bearer <API_KEY>
   "msg": "success",
   "data": {
     "now": 1730000000,
+    "allow_config_modify": true,
     "api_keys_total": 3,
     "tickets_total": 100,
     "tickets_verified_total": 80,
@@ -324,11 +328,62 @@ Authorization: Bearer <API_KEY>
 - 敏感字段不会直接返回明文，只返回 `masked`
 - `API_KEY` 在后台以多条记录维护，`source` 会是 `API_KEYS`
 
+说明补充：
+
+- 响应 `data` 中额外包含 `allow_config_modify`（布尔）：为 `false` 时表示后台不允许修改配置 / 重置默认密钥（仅可通过配置文件/环境变量 `ALLOW_CONFIG_MODIFY` 控制）
+
+### 查询验证记录
+
+- 方法：GET
+- 路径：`/admin/verify-logs`
+- 认证：需要 API Key（仅默认 key）
+
+查询参数（均为可选）：
+
+| 参数名 | 类型 | 说明 |
+|---|---|---|
+| page | int | 页码（默认 1） |
+| page_size | int | 每页条数（默认 20，最大 200） |
+| api_key_id | int | 按关联 key 过滤 |
+| result | int | `1` 只看通过，`0` 只看失败 |
+| group_id | string | 按群号过滤 |
+
+成功响应（示例）：
+
+```json
+{
+  "code": 0,
+  "msg": "success",
+  "data": {
+    "items": [
+      {
+        "id": 1,
+        "created_at": 1730000000,
+        "api_key_id": 2,
+        "api_key_note": "bot-A",
+        "api_key_masked": "Key#2",
+        "ticket": "a5294bce...",
+        "group_id": "123456",
+        "user_id": "654321",
+        "result": true,
+        "code": "A3B5C7",
+        "ip": "1.2.3.4",
+        "user_agent": "Mozilla/5.0 ..."
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 20
+  }
+}
+```
+
 ### 更新配置项
 
 - 方法：PUT
 - 路径：`/admin/settings`
 - 认证：需要 API Key（仅默认 key）
+- 当 `ALLOW_CONFIG_MODIFY=false` 时返回 `403 配置修改已被禁用（ALLOW_CONFIG_MODIFY=false）`
 
 请求体（JSON）：
 
@@ -372,9 +427,28 @@ Authorization: Bearer <API_KEY>
 {
   "code": 0,
   "msg": "success",
-  "data": { "items": [ { "id": 1, "is_default": true, "masked": "abcd...wxyz" } ] }
+  "data": {
+    "items": [
+      {
+        "id": 1,
+        "is_default": true,
+        "masked": "Key#1 (abcd...wxyz)",
+        "note": "默认密钥",
+        "enabled": true,
+        "last_used_at": 1730000000,
+        "request_count": 42
+      }
+    ]
+  }
 }
 ```
+
+字段说明：
+
+- `note`：备注（可为空）
+- `enabled`：是否启用；禁用后该 key 无法通过鉴权
+- `last_used_at`：最后一次用于验证请求（`/verify/create`、`/verify/check`）的时间戳，未使用为 `null`
+- `request_count`：累计验证请求数
 
 ### 创建 API Key
 
@@ -385,18 +459,39 @@ Authorization: Bearer <API_KEY>
 请求体（JSON，可选）：
 
 ```json
-{ "value": "自定义密钥（>=16位）" }
+{ "value": "自定义密钥（>=16位）", "note": "备注，可为空" }
 ```
 
-不传 `value` 时会自动生成。
+不传 `value` 时会自动生成；`note` 可选。
 
 成功响应会返回新建 key 的明文 `value`（只在创建/重置时返回）。
+
+### 更新 API Key（备注 / 启用状态）
+
+- 方法：PATCH
+- 路径：`/admin/api-keys/:id`
+- 认证：需要 API Key（仅默认 key）
+
+请求体（JSON，字段均可选）：
+
+```json
+{ "note": "新的备注", "enabled": false }
+```
+
+说明：
+
+- 仅提交的字段会被更新
+- 默认 key 不可禁用（`enabled=false` 时返回 `403`）
 
 ### 重置 API Key
 
 - 方法：POST
 - 路径：`/admin/api-keys/:id/reset`
 - 认证：需要 API Key（仅默认 key）
+
+限制：
+
+- 当目标为默认 key 且 `ALLOW_CONFIG_MODIFY=false` 时返回 `403`
 
 ### 删除 API Key
 

@@ -16,6 +16,7 @@
         <a-menu :selected-keys="[activeKey]" @menu-item-click="onMenuClick">
           <a-menu-item key="overview">概览</a-menu-item>
           <a-menu-item key="apiKeys">API Key 管理</a-menu-item>
+          <a-menu-item key="verifyLogs">验证记录</a-menu-item>
           <a-menu-item key="settings">配置管理</a-menu-item>
         </a-menu>
       </a-layout-sider>
@@ -95,11 +96,15 @@
           </a-card>
 
           <a-card v-else-if="activeKey === 'apiKeys'" title="API Key 管理" class="card">
-            <AdminApiKeysView :token="tokenText" :on-unauthorized="onUnauthorized" />
+            <AdminApiKeysView :token="tokenText" :on-unauthorized="onUnauthorized" :allow-config-modify="allowConfigModify" />
+          </a-card>
+
+          <a-card v-else-if="activeKey === 'verifyLogs'" title="验证记录" class="card">
+            <AdminVerifyLogsView :token="tokenText" :on-unauthorized="onUnauthorized" />
           </a-card>
 
           <a-card v-else title="配置管理" class="card">
-            <AdminSettingsView :token="tokenText" :on-unauthorized="onUnauthorized" />
+            <AdminSettingsView :token="tokenText" :on-unauthorized="onUnauthorized" :allow-config-modify="allowConfigModify" />
           </a-card>
         </template>
       </a-layout-content>
@@ -115,6 +120,7 @@ import { clearAdminToken, getAdminToken, setAdminToken } from '../../utils/stora
 import { getDashboard } from '../../api/adminSettings';
 import AdminSettingsView from './Settings/index.vue';
 import AdminApiKeysView from './ApiKeys/index.vue';
+import AdminVerifyLogsView from './VerifyLogs/index.vue';
 
 const props = defineProps({
   onLogout: { type: Function, default: null }
@@ -157,6 +163,7 @@ const apiBaseText = computed(() => {
 });
 
 const activeKey = ref('overview');
+const allowConfigModify = ref(true);
 
 const dashboardSubmitting = ref(false);
 const dashboardError = ref('');
@@ -224,6 +231,9 @@ async function loadDashboard() {
         ...dashboard.value,
         ...data.data
       };
+      if (typeof data.data.allow_config_modify !== 'undefined') {
+        allowConfigModify.value = data.data.allow_config_modify !== false;
+      }
       dashboardUpdatedAt.value = Number(data.data.now || 0) || Math.floor(Date.now() / 1000);
       return true;
     }
@@ -243,13 +253,13 @@ async function loadDashboard() {
   }
 }
 
+const MENU_KEYS = ['overview', 'apiKeys', 'verifyLogs', 'settings'];
+
 function readActiveKeyFromLocation() {
   try {
     const u = new URL(window.location.href);
     const k = String(u.searchParams.get('page') || '');
-    if (k === 'settings') return 'settings';
-    if (k === 'apiKeys') return 'apiKeys';
-    return 'overview';
+    return MENU_KEYS.includes(k) && k !== 'overview' ? k : 'overview';
   } catch (e) {
     return 'overview';
   }
@@ -258,15 +268,14 @@ function readActiveKeyFromLocation() {
 function writeActiveKeyToLocation(nextKey) {
   try {
     const u = new URL(window.location.href);
-    if (nextKey === 'settings') u.searchParams.set('page', 'settings');
-    else if (nextKey === 'apiKeys') u.searchParams.set('page', 'apiKeys');
+    if (MENU_KEYS.includes(nextKey) && nextKey !== 'overview') u.searchParams.set('page', nextKey);
     else u.searchParams.delete('page');
     window.history.pushState({}, '', u.pathname + u.search + u.hash);
   } catch (e) {}
 }
 
 function onMenuClick(key) {
-  const nextKey = key === 'settings' ? 'settings' : key === 'apiKeys' ? 'apiKeys' : 'overview';
+  const nextKey = MENU_KEYS.includes(key) ? key : 'overview';
   activeKey.value = nextKey;
   writeActiveKeyToLocation(nextKey);
 }
@@ -287,9 +296,8 @@ onMounted(() => {
     window.addEventListener('popstate', () => {
       activeKey.value = readActiveKeyFromLocation();
     });
-    if (activeKey.value === 'overview') {
-      loadDashboard();
-    }
+    // 始终加载概览一次，用于获取 allow_config_modify 等全局状态
+    loadDashboard();
     return;
   }
   if (props.onLogout) props.onLogout();

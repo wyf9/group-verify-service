@@ -30,6 +30,7 @@ Route::get('v/:ticket', 'VerifyController/page');
 Route::group('admin', function () {
     Route::get('dashboard', 'AdminSettingsController/dashboard')->middleware(app\middleware\AdminApiKeyAuth::class)->completeMatch(true);
     Route::get('api-call-logs', 'AdminSettingsController/apiCallLogs')->middleware(app\middleware\AdminApiKeyAuth::class)->completeMatch(true);
+    Route::get('verify-logs', 'AdminSettingsController/verifyLogs')->middleware(app\middleware\AdminApiKeyAuth::class)->completeMatch(true);
 
     Route::get('settings', 'AdminSettingsController/get')->middleware(app\middleware\AdminApiKeyAuth::class)->completeMatch(true);
     Route::put('settings', 'AdminSettingsController/update')->middleware(app\middleware\AdminApiKeyAuth::class)->completeMatch(true);
@@ -37,6 +38,7 @@ Route::group('admin', function () {
     Route::get('api-keys', 'AdminApiKeysController/list')->middleware(app\middleware\AdminApiKeyAuth::class)->completeMatch(true);
     Route::post('api-keys', 'AdminApiKeysController/create')->middleware(app\middleware\AdminApiKeyAuth::class)->completeMatch(true);
     Route::post('api-keys/:id/reset', 'AdminApiKeysController/reset')->middleware(app\middleware\AdminApiKeyAuth::class)->completeMatch(true);
+    Route::patch('api-keys/:id', 'AdminApiKeysController/update')->middleware(app\middleware\AdminApiKeyAuth::class)->completeMatch(true);
     Route::delete('api-keys/:id', 'AdminApiKeysController/delete')->middleware(app\middleware\AdminApiKeyAuth::class)->completeMatch(true);
 })->completeMatch(true);
 

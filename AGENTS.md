@@ -39,8 +39,10 @@ uv run ty check .
 ## Configuration
 
 - Python backend config sources are merged in this priority order: environment variables > `.env` > `config.yaml`.
-- Supported core config keys include `api_key`, `salt`, `geetest`, `database`, `log_level`, and `enable_doc`.
+- Supported core config keys include `api_key`, `salt`, `geetest`, `database`, `log_level`, `enable_doc`, and `allow_config_modify`.
+- `allow_config_modify` (`ALLOW_CONFIG_MODIFY` env / `allow_config_modify` yaml, default `true`): when `false`, the WebUI cannot update settings or reset the default API key. It is file/env-only so it can never be changed from the admin UI. The PHP backend reads the same `ALLOW_CONFIG_MODIFY` env.
 - Keep secrets such as `API_KEY`, `SALT`, and `GEETEST_CAPTCHA_KEY` out of git.
+- API keys support a `note`, an `enabled` flag, plus `last_used_at` / `request_count` tracking. Verification attempts are persisted to a `verify_logs` table (Python) / `verify_logs` table (PHP) and surfaced in the admin "验证记录" tab. New DB columns/tables are added via lightweight in-code migrations, so existing databases upgrade automatically.
 
 ## Constraints
 

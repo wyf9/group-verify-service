@@ -34,6 +34,11 @@ def authenticate(db: Session, authorization: str | None = Header(default=None)) 
     key_hash = sha256_hex(value)
     for row in db.query(ApiKey).all():
         if secrets.compare_digest(row.hash, key_hash):
+            if not row.enabled:
+                raise HTTPException(
+                    status_code=401,
+                    detail={"code": 401, "msg": "Unauthorized: API key disabled"},
+                )
             default_id = default_api_key_id(db)
             return AuthContext(
                 api_key_id=row.id, is_default=default_id > 0 and row.id == default_id

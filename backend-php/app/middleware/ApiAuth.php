@@ -115,9 +115,14 @@ class ApiAuth
         $providedHash = hash('sha256', $providedKey);
 
         $apiKeyId = 0;
+        $enabled = true;
         try {
-            $id = Db::name('api_keys')->where('hash', $providedHash)->value('id');
-            $apiKeyId = $id !== null ? (int)$id : 0;
+            $row = Db::name('api_keys')->where('hash', $providedHash)->find();
+            if (is_array($row)) {
+                $apiKeyId = (int)($row['id'] ?? 0);
+                // enabled 列可能在旧库中不存在，缺省视为启用
+                $enabled = !array_key_exists('enabled', $row) || (int)$row['enabled'] === 1;
+            }
         } catch (\Throwable $e) {
             $apiKeyId = 0;
         }
@@ -126,6 +131,13 @@ class ApiAuth
             return json([
                 'code' => 401,
                 'msg' => 'Unauthorized: Invalid API key'
+            ], 401);
+        }
+
+        if (!$enabled) {
+            return json([
+                'code' => 401,
+                'msg' => 'Unauthorized: API key disabled'
             ], 401);
         }
 

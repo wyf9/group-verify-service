@@ -56,6 +56,7 @@ class VerifyController extends BaseController
         
         //保存验证数据
         GeetestModel::saveVerifyData($token, ['api_key_id' => $apiKeyId, 'group_id' => $groupId,'user_id' => $userId,'verified' => false,'code' => null]);
+        touch_api_key($apiKeyId);
         
         // 生成验证链接
         $validate = $this->request->domain() . '/v/' . $token;
@@ -196,8 +197,18 @@ class VerifyController extends BaseController
         //验证
         $param = ['lot_number' => $lotNumber,'captcha_output' => $captchaOutput,'pass_token' => $passToken,'gen_time' => $genTime,];
         $geetestResult = GeetestModel::verifyGeetest($param);
-        
+
+        $logBase = [
+            'api_key_id' => (int)($data['api_key_id'] ?? 0),
+            'ticket' => $ticket,
+            'group_id' => (string)($data['group_id'] ?? ''),
+            'user_id' => (string)($data['user_id'] ?? ''),
+            'ip' => $ip,
+            'user_agent' => (string)$this->request->header('user-agent', ''),
+        ];
+
         if (!$geetestResult) {
+            record_verify_log($logBase + ['result' => false, 'code' => null]);
             $result=['code' => 400, 'msg' => '验证失败，请重试'];
             return json($result, 400);
         }
@@ -212,6 +223,8 @@ class VerifyController extends BaseController
         // 更新验证数据
         $result = ['verified' => true, 'code' => $code, 'verified_at' => time()];
         GeetestModel::updateVerifyData($ticket, $result);
+
+        record_verify_log($logBase + ['result' => true, 'code' => $code]);
 
         $jsonResult = ['code' => 0, 'msg' => '验证成功', 'data' => ['code' => $code]];
         return json($jsonResult);
@@ -238,6 +251,14 @@ class VerifyController extends BaseController
         if ($retryAfter > 0) {
             return json(['code' => 429, 'msg' => '请求过于频繁，请稍后重试', 'passed' => false], 429)->header(['Retry-After' => (string)$retryAfter]);
         }
+
+        $checkApiKeyId = 0;
+        try {
+            $checkApiKeyId = (int)$this->request->middleware('api_key_id', 0);
+        } catch (\Throwable $e) {
+            $checkApiKeyId = 0;
+        }
+        touch_api_key($checkApiKeyId);
 
         $groupId = $this->request->post('group_id', '');
         $userId = $this->request->post('user_id', '');
@@ -351,6 +372,10 @@ class VerifyController extends BaseController
         }
         if (!$isDefaultKey) {
             return json(['code' => 403, 'msg' => '权限不足：该接口仅允许默认 API Key 调用'], 403);
+        }
+
+        if (!allow_config_modify()) {
+            return json(['code' => 403, 'msg' => '配置修改已被禁用（ALLOW_CONFIG_MODIFY=false）'], 403);
         }
 
         $retryAfter = rate_limit_hit('rl:api_key_reset:' . $apiKeyId, 3, 60);

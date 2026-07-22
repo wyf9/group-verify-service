@@ -5,6 +5,12 @@
       :show-icon="true"
     >只填写需要修改的项，留空不会覆盖已有配置。</a-alert>
 
+    <a-alert
+      v-if="!configEditable"
+      type="warning"
+      :show-icon="true"
+    >配置修改已被禁用（ALLOW_CONFIG_MODIFY=false），当前仅可查看，无法保存更改。</a-alert>
+
     <a-result v-if="errorText" status="error" title="加载失败" :subtitle="errorText" />
 
     <template v-else>
@@ -40,7 +46,7 @@
       <a-space direction="vertical" size="medium" fill>
         <a-space>
           <a-button :loading="submitting" @click="loadSettings">刷新</a-button>
-          <a-button type="primary" :loading="submitting" :disabled="!hasChanges" @click="onSave">保存更改</a-button>
+          <a-button type="primary" :loading="submitting" :disabled="!hasChanges || !configEditable" @click="onSave">保存更改</a-button>
         </a-space>
       </a-space>
     </template>
@@ -54,7 +60,8 @@ import { getSettings, updateSettings } from '../../../api/adminSettings';
 
 const props = defineProps({
   token: { type: String, default: '' },
-  onUnauthorized: { type: Function, default: null }
+  onUnauthorized: { type: Function, default: null },
+  allowConfigModify: { type: Boolean, default: true }
 });
 
 const tokenRef = computed(() => String(props.token || ''));
@@ -62,6 +69,11 @@ const tokenRef = computed(() => String(props.token || ''));
 const settings = ref([]);
 const settingsSubmitting = ref(false);
 const settingsError = ref('');
+const allowConfigModifyData = ref(true);
+
+const configEditable = computed(
+  () => props.allowConfigModify !== false && allowConfigModifyData.value !== false
+);
 
 function resetSettings() {
   settings.value = [];
@@ -83,6 +95,9 @@ async function loadSettings() {
 
     if (data && data.code === 0 && data.data && Array.isArray(data.data.items)) {
       settings.value = data.data.items;
+      if (typeof data.data.allow_config_modify !== 'undefined') {
+        allowConfigModifyData.value = data.data.allow_config_modify !== false;
+      }
       return true;
     }
 
@@ -116,6 +131,9 @@ async function saveSettings(values) {
 
     if (data && data.code === 0 && data.data && Array.isArray(data.data.items)) {
       settings.value = data.data.items;
+      if (typeof data.data.allow_config_modify !== 'undefined') {
+        allowConfigModifyData.value = data.data.allow_config_modify !== false;
+      }
       return { ok: true, unauthorized: false };
     }
 

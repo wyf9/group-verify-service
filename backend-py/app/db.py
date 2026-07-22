@@ -5,7 +5,7 @@ from collections.abc import Generator
 from pathlib import Path
 from typing import Any, cast
 
-from sqlalchemy import Boolean, Integer, String, Text, create_engine, func
+from sqlalchemy import Boolean, Integer, String, Text, create_engine, func, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
 from .config import BASE_DIR, settings
@@ -72,6 +72,10 @@ class ApiKey(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    note: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    last_used_at: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[int] = mapped_column(Integer, nullable=False)
     updated_at: Mapped[int] = mapped_column(Integer, nullable=False)
 
@@ -94,8 +98,45 @@ class ApiCallLog(Base):
     created_at: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
 
 
+class VerifyLog(Base):
+    __tablename__ = "verify_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    api_key_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    ticket: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    group_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    user_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    result: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    code: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+
+
+def _ensure_columns() -> None:
+    """为已存在的旧数据库补齐新增列（轻量迁移）。"""
+    inspector = inspect(engine)
+    if "api_keys" not in inspector.get_table_names():
+        return
+    existing = {col["name"] for col in inspector.get_columns("api_keys")}
+    migrations = {
+        "note": "ALTER TABLE api_keys ADD COLUMN note VARCHAR(255) NOT NULL DEFAULT ''",
+        "enabled": "ALTER TABLE api_keys ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT 1",
+        "last_used_at": "ALTER TABLE api_keys ADD COLUMN last_used_at INTEGER",
+        "request_count": "ALTER TABLE api_keys ADD COLUMN request_count INTEGER NOT NULL DEFAULT 0",
+    }
+    import contextlib
+
+    with engine.begin() as conn:
+        for column, ddl in migrations.items():
+            if column not in existing:
+                with contextlib.suppress(Exception):
+                    conn.execute(text(ddl))
+
+
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
+    _ensure_columns()
     with SessionLocal() as db:
         keys = normalize_api_keys(settings.api_key)
         if keys and db.query(ApiKey).count() == 0:
@@ -157,3 +198,19 @@ def upsert_setting(db: Session, key: str, value: str) -> None:
 
 def count_rows(db: Session, model: type[Any], *criteria: Any) -> int:
     return int(db.query(func.count(cast(Any, model).id)).filter(*criteria).scalar() or 0)
+
+
+def touch_api_key(db: Session, api_key_id: int | None) -> None:
+    """记录 API Key 最后使用时间并累加验证请求数。"""
+    if not api_key_id or api_key_id <= 0:
+        return
+    try:
+        db.query(ApiKey).filter(ApiKey.id == api_key_id).update(
+            {
+                "last_used_at": int(time.time()),
+                "request_count": ApiKey.request_count + 1,
+            }
+        )
+        db.commit()
+    except Exception:  # noqa: BLE001
+        db.rollback()

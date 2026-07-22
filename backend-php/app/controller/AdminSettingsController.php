@@ -166,12 +166,16 @@ class AdminSettingsController extends BaseController
             ];
         }
 
-        return json(['code' => 0, 'msg' => 'success', 'data' => ['items' => $items]]);
+        return json(['code' => 0, 'msg' => 'success', 'data' => ['items' => $items, 'allow_config_modify' => allow_config_modify()]]);
     }
 
     public function update()
     {
         $this->ensureApiKeysMigrated();
+
+        if (!allow_config_modify()) {
+            return json(['code' => 403, 'msg' => '配置修改已被禁用（ALLOW_CONFIG_MODIFY=false）'], 403);
+        }
 
         $body = $this->getJsonBody();
         $values = $body['values'] ?? null;
@@ -381,6 +385,7 @@ class AdminSettingsController extends BaseController
             'msg' => 'success',
             'data' => [
                 'now' => $now,
+                'allow_config_modify' => allow_config_modify(),
                 'api_keys_total' => $apiKeysTotal,
                 'tickets_total' => $ticketsTotal,
                 'tickets_verified_total' => $ticketsVerified,
@@ -482,6 +487,102 @@ class AdminSettingsController extends BaseController
                     'ip' => (string)($r['ip'] ?? ''),
                     'user_agent' => (string)($r['user_agent'] ?? ''),
                     'duration_ms' => (int)($r['duration_ms'] ?? 0),
+                ];
+            }
+
+            return json(['code' => 0, 'msg' => 'success', 'data' => ['items' => $items, 'total' => $total, 'page' => $page, 'page_size' => $pageSize]]);
+        } catch (\Throwable $e) {
+            return json(['code' => 500, 'msg' => '加载失败'], 500);
+        }
+    }
+
+    public function verifyLogs()
+    {
+        $this->ensureApiKeysMigrated();
+        ensure_verify_logs_table();
+
+        $page = 1;
+        $pageSize = 20;
+        try {
+            $page = (int)$this->request->get('page', 1);
+            $pageSize = (int)$this->request->get('page_size', 20);
+        } catch (\Throwable $e) {
+            $page = 1;
+            $pageSize = 20;
+        }
+        if ($page <= 0) {
+            $page = 1;
+        }
+        if ($pageSize <= 0) {
+            $pageSize = 20;
+        }
+        if ($pageSize > 200) {
+            $pageSize = 200;
+        }
+
+        $apiKeyId = 0;
+        $result = -1;
+        $groupId = '';
+        try {
+            $apiKeyId = (int)$this->request->get('api_key_id', 0);
+            $rawResult = $this->request->get('result', '');
+            if ($rawResult === '0' || $rawResult === '1' || $rawResult === 0 || $rawResult === 1) {
+                $result = (int)$rawResult;
+            }
+            $groupId = trim((string)$this->request->get('group_id', ''));
+        } catch (\Throwable $e) {
+        }
+
+        try {
+            $q = Db::name('verify_logs');
+            if ($apiKeyId > 0) {
+                $q = $q->where('api_key_id', $apiKeyId);
+            }
+            if ($result === 0 || $result === 1) {
+                $q = $q->where('result', $result);
+            }
+            if ($groupId !== '') {
+                $q = $q->where('group_id', $groupId);
+            }
+
+            $total = (int)$q->count();
+            $rows = $q->order('id', 'desc')->page($page, $pageSize)->select()->toArray();
+
+            // 关联 key 备注
+            $notes = [];
+            $keyIds = [];
+            foreach ($rows ?: [] as $r) {
+                $kid = (int)($r['api_key_id'] ?? 0);
+                if ($kid > 0) {
+                    $keyIds[$kid] = true;
+                }
+            }
+            if ($keyIds) {
+                try {
+                    $keyRows = Db::name('api_keys')->whereIn('id', array_keys($keyIds))->field('id,note')->select()->toArray();
+                    foreach ($keyRows ?: [] as $kr) {
+                        $notes[(int)($kr['id'] ?? 0)] = (string)($kr['note'] ?? '');
+                    }
+                } catch (\Throwable $e) {
+                }
+            }
+
+            $items = [];
+            foreach ($rows ?: [] as $r) {
+                $kid = (int)($r['api_key_id'] ?? 0);
+                $items[] = [
+                    'id' => (int)($r['id'] ?? 0),
+                    'created_at' => (int)($r['created_at'] ?? 0),
+                    'api_key_id' => $kid > 0 ? $kid : null,
+                    'api_key_note' => $kid > 0 ? ($notes[$kid] ?? '') : '',
+                    'api_key_masked' => $kid > 0 ? ('Key#' . $kid) : '',
+                    'ticket' => (string)($r['ticket'] ?? ''),
+                    'group_id' => (string)($r['group_id'] ?? ''),
+                    'user_id' => (string)($r['user_id'] ?? ''),
+                    'result' => (int)($r['result'] ?? 0) === 1,
+                    'code' => (string)($r['code'] ?? ''),
+                    'ip' => (string)($r['ip'] ?? ''),
+                    'user_agent' => (string)($r['user_agent'] ?? ''),
                 ];
             }
 

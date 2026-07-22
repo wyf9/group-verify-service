@@ -64,7 +64,10 @@
 - 集成极验 Geetest V4 行为验证
 - 生成并管理一次性验证码（默认 300 秒有效）
 - 提供机器人调用接口（API Key 保护）
-- 提供管理后台（配置与 API Keys 管理）
+- 提供管理后台（配置、API Keys 管理与验证记录）
+- API Key 支持备注、启用/禁用，并展示最后使用时间与验证请求数
+- 「验证记录」标签页记录每次验证的关联 Key（悬停显示备注）、IP、浏览器类型（悬停显示完整 UA）、验证结果与验证码
+- 支持 `ALLOW_CONFIG_MODIFY=false` 锁定后台配置修改与默认密钥重置
 
 ## 文档
 
@@ -174,6 +177,9 @@ location / {
 
 - 页面入口：`/admin`、`/admin/login`
 - 管理接口统一使用 API Key 鉴权
+- 概览、API Key 管理、验证记录、配置管理四个标签页
+- API Key 管理：新增随机/自定义密钥（均可填写备注）、编辑备注、启用/禁用、重置、删除，并展示最后使用时间与验证请求数
+- 验证记录：分页查看每次验证的关联 Key（悬停显示备注）、IP、浏览器类型（悬停显示完整 UA）、验证结果与验证码
 
 ## 本地开发
 
@@ -245,6 +251,7 @@ Python 后端支持 `backend-py/config.yaml`、`backend-py/.env` 与系统环境
 | `database` / `DATABASE` | SQLAlchemy 数据库 URL，默认 `sqlite:///./data.db` |
 | `log_level` / `LOG_LEVEL` | 日志级别，默认 `INFO` |
 | `enable_doc` / `ENABLE_DOC` | 是否启用 `/docs`、`/redoc`、`/openapi.json` |
+| `allow_config_modify` / `ALLOW_CONFIG_MODIFY` | 是否允许在 WebUI 修改配置 / 重置默认密钥，默认 `true`；设为 `false` 后管理后台仅可查看配置，且不能重置默认密钥（仅可从配置文件/环境变量设置，PHP 后端读取同名 `ALLOW_CONFIG_MODIFY`） |
 
 ## 安全建议
 

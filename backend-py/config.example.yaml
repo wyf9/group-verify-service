@@ -8,3 +8,5 @@ geetest:
 database: "sqlite:///./data.db"
 log_level: "INFO"
 enable_doc: true
+# 设为 false 可禁止在 WebUI 修改配置 / 重置默认密钥
+allow_config_modify: true

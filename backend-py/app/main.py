@@ -23,16 +23,19 @@ from .db import (
     ApiKey,
     SessionLocal,
     Setting,
+    VerifyLog,
     VerifyTicket,
     count_rows,
     get_db,
     init_db,
     normalize_api_keys,
     sha256_hex,
+    touch_api_key,
     upsert_setting,
 )
 from .schemas import (
     ApiKeyCreateRequest,
+    ApiKeyUpdateRequest,
     ApiResponse,
     SettingsUpdateRequest,
     VerifyCallbackRequest,
@@ -136,6 +139,11 @@ def json_error(status: int, msg: str, **extra: Any) -> None:
     raise HTTPException(status_code=status, detail={"code": status, "msg": msg, **extra})
 
 
+def require_config_modify() -> None:
+    if not settings.allow_config_modify:
+        json_error(403, "配置修改已被禁用（ALLOW_CONFIG_MODIFY=false）")
+
+
 @app.post(
     "/verify/create",
     response_model=VerifyCreateResponse,
@@ -178,6 +186,7 @@ async def verify_create(
         )
     )
     db.commit()
+    touch_api_key(db, auth.api_key_id)
     url = str(request.base_url).rstrip("/") + f"/v/{token}"
     return {"code": 0, "msg": "success", "data": {"ticket": token, "url": url, "expire": expire}}
 
@@ -240,6 +249,7 @@ async def verify_callback(request: Request, db: Annotated[Session, Depends(get_d
         return {"code": 0, "msg": "已验证"}
     ok = await verify_geetest(db, payload.model_dump())
     if not ok:
+        record_verify_log(db, request, row, result=False, code=None)
         json_error(400, "验证失败，请重试")
     for _ in range(10):
         code = generate_code()
@@ -264,6 +274,7 @@ async def verify_callback(request: Request, db: Annotated[Session, Depends(get_d
     row.updated_at = now_ts()
     request.state.code = code
     db.commit()
+    record_verify_log(db, request, row, result=True, code=code)
     return {"code": 0, "msg": "验证成功", "data": {"code": code}}
 
 
@@ -279,8 +290,9 @@ async def verify_callback(request: Request, db: Annotated[Session, Depends(get_d
 async def verify_check(
     request: Request,
     db: Annotated[Session, Depends(get_db)],
-    _auth: Annotated[AuthContext, Depends(current_auth)],
+    auth: Annotated[AuthContext, Depends(current_auth)],
 ):
+    touch_api_key(db, auth.api_key_id)
     retry = rate_limit_hit(f"rl:verify_check:{client_ip(request) or 'unknown'}", 60, 60)
     if retry:
         raise retry_response(retry, passed=False)
@@ -376,6 +388,7 @@ async def verify_reset_key(
     db: Annotated[Session, Depends(get_db)], auth: Annotated[AuthContext, Depends(current_auth)]
 ):
     require_default(auth)
+    require_config_modify()
     retry = rate_limit_hit(f"rl:api_key_reset:{auth.api_key_id}", 3, 60)
     if retry:
         raise retry_response(retry)
@@ -431,6 +444,7 @@ async def admin_dashboard(
         "msg": "success",
         "data": {
             "now": now,
+            "allow_config_modify": settings.allow_config_modify,
             "api_keys_total": count_rows(db, ApiKey),
             "tickets_total": count_rows(db, VerifyTicket),
             "tickets_verified_total": count_rows(db, VerifyTicket, VerifyTicket.verified.is_(True)),
@@ -501,6 +515,30 @@ async def admin_api_call_logs(
     }
 
 
+def record_verify_log(
+    db: Session, request: Request, ticket: VerifyTicket, *, result: bool, code: str | None
+) -> None:
+    """记录一次验证行为（成功或失败）。"""
+    try:
+        db.add(
+            VerifyLog(
+                api_key_id=ticket.api_key_id,
+                ticket=ticket.token,
+                group_id=ticket.group_id,
+                user_id=ticket.user_id,
+                result=result,
+                code=code,
+                ip=client_ip(request),
+                user_agent=request.headers.get("user-agent", ""),
+                created_at=now_ts(),
+            )
+        )
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        logger.debug("failed to record verify log: %s", exc)
+
+
 def log_to_dict(row: ApiCallLog) -> dict[str, Any]:
     return {
         k: getattr(row, k)
@@ -519,6 +557,62 @@ def log_to_dict(row: ApiCallLog) -> dict[str, Any]:
             "user_agent",
             "duration_ms",
         ]
+    }
+
+
+@app.get(
+    "/admin/verify-logs",
+    response_model=ApiResponse,
+    summary="查询验证记录",
+    description="分页返回每次验证行为记录，包含关联 key（含备注）、IP、UA、验证结果与验证码。",
+)
+async def admin_verify_logs(
+    db: Annotated[Session, Depends(get_db)],
+    auth: Annotated[AuthContext, Depends(current_auth)],
+    page: int = 1,
+    page_size: int = 20,
+    api_key_id: int = 0,
+    result: int = -1,
+    group_id: str = "",
+):
+    require_default(auth)
+    page = max(1, page)
+    page_size = min(max(1, page_size), 200)
+    q = db.query(VerifyLog)
+    if api_key_id > 0:
+        q = q.filter(VerifyLog.api_key_id == api_key_id)
+    if result in (0, 1):
+        q = q.filter(VerifyLog.result.is_(result == 1))
+    if group_id:
+        q = q.filter(VerifyLog.group_id == group_id)
+    total = q.count()
+    rows = q.order_by(VerifyLog.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    key_ids = {r.api_key_id for r in rows if r.api_key_id}
+    notes: dict[int, str] = {}
+    if key_ids:
+        for k in db.query(ApiKey).filter(ApiKey.id.in_(key_ids)).all():
+            notes[k.id] = k.note or ""
+    items = [
+        {
+            "id": r.id,
+            "created_at": r.created_at,
+            "api_key_id": r.api_key_id,
+            "api_key_note": notes.get(r.api_key_id, "") if r.api_key_id else "",
+            "api_key_masked": f"Key#{r.api_key_id}" if r.api_key_id else "",
+            "ticket": r.ticket,
+            "group_id": r.group_id,
+            "user_id": r.user_id,
+            "result": bool(r.result),
+            "code": r.code,
+            "ip": r.ip,
+            "user_agent": r.user_agent,
+        }
+        for r in rows
+    ]
+    return {
+        "code": 0,
+        "msg": "success",
+        "data": {"items": items, "total": total, "page": page, "page_size": page_size},
     }
 
 
@@ -576,7 +670,11 @@ async def admin_settings_get(
                 "source": "DB" if row else "ENV",
             }
         )
-    return {"code": 0, "msg": "success", "data": {"items": items}}
+    return {
+        "code": 0,
+        "msg": "success",
+        "data": {"items": items, "allow_config_modify": settings.allow_config_modify},
+    }
 
 
 @app.put(
@@ -591,6 +689,7 @@ async def admin_settings_update(
     auth: Annotated[AuthContext, Depends(current_auth)],
 ):
     require_default(auth)
+    require_config_modify()
     parsed = {
         k: str(v).strip() for k, v in body.values.items() if k in SETTINGS_DEFS and str(v).strip()
     }
@@ -645,6 +744,10 @@ async def admin_api_keys_list(
             "id": row.id,
             "is_default": row.id == default_id,
             "masked": f"Key#{row.id} ({row.hash[:4]}...{row.hash[-4:]})",
+            "note": row.note or "",
+            "enabled": bool(row.enabled),
+            "last_used_at": row.last_used_at,
+            "request_count": row.request_count or 0,
             "created_at": row.created_at,
             "updated_at": row.updated_at,
         }
@@ -666,13 +769,14 @@ async def admin_api_keys_create(
 ):
     require_default(auth)
     value = ((body.value if body else None) or secrets.token_hex(32)).strip()
+    note = ((body.note if body else None) or "").strip()[:255]
     if len(value) < 16:
         json_error(400, "密钥长度至少 16 位")
     h = sha256_hex(value)
     if db.query(ApiKey).filter(ApiKey.hash == h).first():
         json_error(409, "密钥已存在")
     ts = now_ts()
-    row = ApiKey(hash=h, created_at=ts, updated_at=ts)
+    row = ApiKey(hash=h, note=note, enabled=True, created_at=ts, updated_at=ts)
     db.add(row)
     db.commit()
     return JSONResponse(
@@ -683,12 +787,52 @@ async def admin_api_keys_create(
                 "id": row.id,
                 "value": value,
                 "masked": mask_secret(value),
+                "note": note,
                 "created_at": ts,
                 "updated_at": ts,
             },
         },
         headers={"Cache-Control": "no-store"},
     )
+
+
+@app.patch(
+    "/admin/api-keys/{id}",
+    response_model=ApiResponse,
+    summary="更新 API Key 备注 / 启用状态",
+    description="更新指定 API Key 的备注或启用/禁用状态；默认 key 不可禁用。",
+)
+async def admin_api_keys_update(
+    id: str,
+    body: ApiKeyUpdateRequest,
+    db: Annotated[Session, Depends(get_db)],
+    auth: Annotated[AuthContext, Depends(current_auth)],
+):
+    require_default(auth)
+    if not id.isdigit():
+        json_error(400, "参数错误")
+    row = db.get(ApiKey, int(id))
+    if row is None:
+        json_error(404, "不存在")
+    assert row is not None
+    if body.note is not None:
+        row.note = body.note.strip()[:255]
+    if body.enabled is not None:
+        if not body.enabled and row.id == default_api_key_id(db):
+            json_error(403, "当前使用的 API Key 不可禁用")
+        row.enabled = bool(body.enabled)
+    row.updated_at = now_ts()
+    db.commit()
+    return {
+        "code": 0,
+        "msg": "success",
+        "data": {
+            "id": row.id,
+            "note": row.note or "",
+            "enabled": bool(row.enabled),
+            "updated_at": row.updated_at,
+        },
+    }
 
 
 @app.post(
@@ -709,6 +853,8 @@ async def admin_api_keys_reset(
     if row is None:
         json_error(500, "重置失败")
     assert row is not None
+    if row.id == default_api_key_id(db):
+        require_config_modify()
     value = secrets.token_hex(32)
     row.hash = sha256_hex(value)
     row.updated_at = now_ts()

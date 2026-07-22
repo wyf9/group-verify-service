@@ -83,6 +83,6 @@ async function onLogin() {
 <style scoped>
 .card {
   width: 100%;
-  max-width: 720px;
+  max-width: 420px;
 }
 </style>

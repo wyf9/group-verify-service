@@ -2,7 +2,9 @@
   <a-config-provider :locale="arcoLocale">
     <div class="page">
       <template v-if="adminMode">
-        <AdminLoginView v-if="adminRoute === 'login'" :on-login-success="goAdminHome" />
+        <div v-if="adminRoute === 'login'" class="login-wrap">
+          <AdminLoginView :on-login-success="goAdminHome" />
+        </div>
         <AdminView v-else :on-logout="goAdminLogin" />
       </template>
       <VerifyView v-else :t="t" />
@@ -84,5 +86,15 @@ onMounted(() => {
   min-height: 100vh;
   margin: 0;
   padding: 0;
+}
+
+.login-wrap {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
 }
 </style>

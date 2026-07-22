@@ -158,7 +158,133 @@ function ensure_api_keys_table(): void
     } catch (\Throwable) {
     }
 
+    // 轻量迁移：补齐新增列（备注 / 启用状态 / 最后使用时间 / 验证请求数）
+    $addColumns = [
+        'note' => "ADD COLUMN `note` VARCHAR(255) NOT NULL DEFAULT ''",
+        'enabled' => "ADD COLUMN `enabled` TINYINT(1) NOT NULL DEFAULT 1",
+        'last_used_at' => "ADD COLUMN `last_used_at` INTEGER DEFAULT NULL",
+        'request_count' => "ADD COLUMN `request_count` INTEGER NOT NULL DEFAULT 0",
+    ];
+    foreach ($addColumns as $col => $ddl) {
+        try {
+            Db::query("SELECT `{$col}` FROM `api_keys` LIMIT 1");
+        } catch (\Throwable) {
+            try {
+                Db::execute("ALTER TABLE `api_keys` {$ddl}");
+            } catch (\Throwable) {
+            }
+        }
+    }
+
     $ready = true;
+}
+
+function ensure_verify_logs_table(): void
+{
+    static $ready = false;
+    if ($ready) {
+        return;
+    }
+
+    try {
+        Db::name('verify_logs')->where('id', '>', 0)->limit(1)->value('id');
+        $ready = true;
+        return;
+    } catch (\Throwable) {
+    }
+
+    try {
+        try {
+            Db::execute('CREATE TABLE IF NOT EXISTS `verify_logs` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT,
+                `api_key_id` INTEGER DEFAULT NULL,
+                `ticket` VARCHAR(64) DEFAULT NULL,
+                `group_id` VARCHAR(64) DEFAULT NULL,
+                `user_id` VARCHAR(64) DEFAULT NULL,
+                `result` TINYINT(1) NOT NULL DEFAULT 0,
+                `code` VARCHAR(10) DEFAULT NULL,
+                `ip` VARCHAR(45) DEFAULT NULL,
+                `user_agent` VARCHAR(500) DEFAULT NULL,
+                `created_at` INTEGER UNSIGNED NOT NULL
+            )');
+            Db::execute('CREATE INDEX IF NOT EXISTS `idx_verify_logs_created_at` ON `verify_logs` (`created_at`)');
+            Db::execute('CREATE INDEX IF NOT EXISTS `idx_verify_logs_api_key` ON `verify_logs` (`api_key_id`, `created_at`)');
+            Db::execute('CREATE INDEX IF NOT EXISTS `idx_verify_logs_group` ON `verify_logs` (`group_id`, `created_at`)');
+        } catch (\Throwable) {
+            Db::execute('CREATE TABLE IF NOT EXISTS `verify_logs` (
+                `id` INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                `api_key_id` INT UNSIGNED NULL,
+                `ticket` VARCHAR(64) NULL,
+                `group_id` VARCHAR(64) NULL,
+                `user_id` VARCHAR(64) NULL,
+                `result` TINYINT(1) NOT NULL DEFAULT 0,
+                `code` VARCHAR(10) NULL,
+                `ip` VARCHAR(45) NULL,
+                `user_agent` VARCHAR(500) NULL,
+                `created_at` INT UNSIGNED NOT NULL,
+                KEY `idx_verify_logs_created_at` (`created_at`),
+                KEY `idx_verify_logs_api_key` (`api_key_id`, `created_at`),
+                KEY `idx_verify_logs_group` (`group_id`, `created_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+        }
+    } catch (\Throwable) {
+    }
+
+    $ready = true;
+}
+
+/**
+ * 是否允许在 WebUI 修改配置 / 重置默认密钥
+ * 通过 .env 的 ALLOW_CONFIG_MODIFY 控制，默认允许
+ */
+function allow_config_modify(): bool
+{
+    $v = env('ALLOW_CONFIG_MODIFY', true);
+    if (is_bool($v)) {
+        return $v;
+    }
+    $s = strtolower(trim((string)$v));
+    return !in_array($s, ['false', '0', 'no', 'off', ''], true);
+}
+
+/**
+ * 记录 API Key 最后使用时间并累加验证请求数
+ */
+function touch_api_key(int $apiKeyId): void
+{
+    if ($apiKeyId <= 0) {
+        return;
+    }
+    try {
+        ensure_api_keys_table();
+        Db::name('api_keys')->where('id', $apiKeyId)->update([
+            'last_used_at' => time(),
+            'request_count' => Db::raw('request_count + 1'),
+        ]);
+    } catch (\Throwable $e) {
+    }
+}
+
+/**
+ * 记录一次验证行为（成功或失败）
+ */
+function record_verify_log(array $data): void
+{
+    try {
+        ensure_verify_logs_table();
+        Db::name('verify_logs')->insert([
+            'api_key_id' => !empty($data['api_key_id']) ? (int)$data['api_key_id'] : null,
+            'ticket' => !empty($data['ticket']) ? (string)$data['ticket'] : null,
+            'group_id' => !empty($data['group_id']) ? (string)$data['group_id'] : null,
+            'user_id' => !empty($data['user_id']) ? (string)$data['user_id'] : null,
+            'result' => !empty($data['result']) ? 1 : 0,
+            'code' => !empty($data['code']) ? (string)$data['code'] : null,
+            'ip' => !empty($data['ip']) ? (string)$data['ip'] : null,
+            'user_agent' => !empty($data['user_agent']) ? mb_substr((string)$data['user_agent'], 0, 500) : null,
+            'created_at' => time(),
+        ]);
+    } catch (\Throwable $e) {
+    }
 }
 
 function ensure_api_call_logs_table(): void

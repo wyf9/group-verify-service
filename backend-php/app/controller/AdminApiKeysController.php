@@ -46,6 +46,10 @@ class AdminApiKeysController extends BaseController
                 'id' => $id,
                 'is_default' => $defaultId > 0 && $id === $defaultId,
                 'masked' => $h !== '' ? ('Key#' . $id . ' (' . mb_substr($h, 0, 4) . '...' . mb_substr($h, -4) . ')') : '',
+                'note' => (string)($r['note'] ?? ''),
+                'enabled' => !array_key_exists('enabled', $r) || (int)$r['enabled'] === 1,
+                'last_used_at' => isset($r['last_used_at']) && $r['last_used_at'] !== null ? (int)$r['last_used_at'] : null,
+                'request_count' => (int)($r['request_count'] ?? 0),
                 'created_at' => (int)($r['created_at'] ?? 0),
                 'updated_at' => (int)($r['updated_at'] ?? 0),
             ];
@@ -59,6 +63,7 @@ class AdminApiKeysController extends BaseController
         $this->ensureApiKeysMigrated();
         $body = $this->getJsonBody();
         $value = trim((string)($body['value'] ?? ''));
+        $note = mb_substr(trim((string)($body['note'] ?? '')), 0, 255);
 
         if ($value === '') {
             try {
@@ -77,6 +82,9 @@ class AdminApiKeysController extends BaseController
         try {
             Db::name('api_keys')->insert([
                 'hash' => $keyHash,
+                'note' => $note,
+                'enabled' => 1,
+                'request_count' => 0,
                 'created_at' => $ts,
                 'updated_at' => $ts,
             ]);
@@ -104,10 +112,64 @@ class AdminApiKeysController extends BaseController
                 'id' => $id,
                 'value' => $value,
                 'masked' => $this->maskSecret($value),
+                'note' => $note,
                 'created_at' => $ts,
                 'updated_at' => $ts,
             ],
         ])->header(['Cache-Control' => 'no-store']);
+    }
+
+    public function update($id = '')
+    {
+        $this->ensureApiKeysMigrated();
+        $sid = trim((string)$id);
+        if ($sid === '' || !ctype_digit($sid)) {
+            return json(['code' => 400, 'msg' => '参数错误'], 400);
+        }
+        $targetId = (int)$sid;
+
+        $row = null;
+        try {
+            $row = Db::name('api_keys')->where('id', $targetId)->find();
+        } catch (\Throwable $e) {
+            $row = null;
+        }
+        if (!is_array($row)) {
+            return json(['code' => 404, 'msg' => '不存在'], 404);
+        }
+
+        $body = $this->getJsonBody();
+        $update = ['updated_at' => time()];
+
+        if (array_key_exists('note', $body)) {
+            $update['note'] = mb_substr(trim((string)($body['note'] ?? '')), 0, 255);
+        }
+        if (array_key_exists('enabled', $body)) {
+            $enabled = !empty($body['enabled']);
+            if (!$enabled && $targetId === $this->getDefaultApiKeyId()) {
+                return json(['code' => 403, 'msg' => '当前使用的 API Key 不可禁用'], 403);
+            }
+            $update['enabled'] = $enabled ? 1 : 0;
+        }
+
+        try {
+            Db::name('api_keys')->where('id', $targetId)->update($update);
+        } catch (\Throwable $e) {
+            return json(['code' => 500, 'msg' => '更新失败'], 500);
+        }
+
+        \app\middleware\ApiAuth::clearCache();
+
+        return json([
+            'code' => 0,
+            'msg' => 'success',
+            'data' => [
+                'id' => $targetId,
+                'note' => (string)($update['note'] ?? ($row['note'] ?? '')),
+                'enabled' => isset($update['enabled']) ? (int)$update['enabled'] === 1 : (!array_key_exists('enabled', $row) || (int)$row['enabled'] === 1),
+                'updated_at' => (int)$update['updated_at'],
+            ],
+        ]);
     }
 
     public function delete($id = '')
@@ -148,6 +210,10 @@ class AdminApiKeysController extends BaseController
         $targetId = (int)$sid;
         if ($targetId <= 0) {
             return json(['code' => 400, 'msg' => '参数错误'], 400);
+        }
+
+        if ($targetId === $this->getDefaultApiKeyId() && !allow_config_modify()) {
+            return json(['code' => 403, 'msg' => '配置修改已被禁用（ALLOW_CONFIG_MODIFY=false）'], 403);
         }
 
         $newValue = '';

@@ -23,12 +23,27 @@ export function listApiKeysById(token, id) {
   });
 }
 
-export function createApiKey(token, value) {
+export function createApiKey(token, value, note) {
   const v = typeof value === 'undefined' ? '' : String(value || '').trim();
-  const data = v ? { value: v } : {};
+  const data = {};
+  if (v) data.value = v;
+  const n = typeof note === 'undefined' ? '' : String(note || '').trim();
+  if (n) data.note = n;
   return request({
     url: '/admin/api-keys',
     method: 'post',
+    headers: authHeaders(token),
+    data
+  });
+}
+
+export function updateApiKey(token, id, payload) {
+  const data = {};
+  if (payload && typeof payload.note !== 'undefined') data.note = String(payload.note || '');
+  if (payload && typeof payload.enabled !== 'undefined') data.enabled = !!payload.enabled;
+  return request({
+    url: `/admin/api-keys/${Number(id)}`,
+    method: 'patch',
     headers: authHeaders(token),
     data
   });
